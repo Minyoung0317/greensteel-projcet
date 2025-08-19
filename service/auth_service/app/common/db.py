@@ -31,7 +31,10 @@ def clean_database_url(url: str) -> str:
     return url
 
 def create_database_engine():
-    """데이터베이스 엔진 생성 (Railway PostgreSQL 최적화)"""
+    """데이터베이스 엔진 생성 (Railway PostgreSQL 전용)"""
+    if not settings.DATABASE_URL:
+        raise ValueError("DATABASE_URL이 설정되지 않았습니다. Railway PostgreSQL 연결 정보를 확인하세요.")
+    
     try:
         # DATABASE_URL 정리
         clean_url = clean_database_url(settings.DATABASE_URL)
@@ -58,33 +61,27 @@ def create_database_engine():
                 else:
                     clean_url += f"?sslmode={settings.DATABASE_SSL_MODE}"
         
-        auth_logger.info(f"데이터베이스 연결 시도: {clean_url.split('@')[1] if '@' in clean_url else clean_url}")
+        auth_logger.info(f"Railway PostgreSQL 연결 시도: {clean_url.split('@')[1] if '@' in clean_url else clean_url}")
         
         engine = create_engine(clean_url, **engine_params)
         
         # 연결 테스트
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            auth_logger.info("데이터베이스 연결 성공")
+            auth_logger.info("Railway PostgreSQL 연결 성공")
         
         return engine
         
     except Exception as e:
-        auth_logger.error(f"데이터베이스 엔진 생성 실패: {str(e)}")
+        auth_logger.error(f"Railway PostgreSQL 연결 실패: {str(e)}")
         raise
 
-# 데이터베이스 엔진 생성
+# 데이터베이스 엔진 생성 (Railway PostgreSQL 전용)
 try:
     engine = create_database_engine()
 except Exception as e:
-    auth_logger.error(f"데이터베이스 초기화 실패: {str(e)}")
-    # 폴백: SQLite 사용
-    engine = create_engine(
-        "sqlite:///./auth_fallback.db",
-        pool_pre_ping=True,
-        echo=settings.DB_ECHO
-    )
-    auth_logger.warning("SQLite 폴백 데이터베이스 사용")
+    auth_logger.error(f"Railway PostgreSQL 초기화 실패: {str(e)}")
+    raise
 
 # 세션 팩토리 생성
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -104,7 +101,7 @@ def create_tables():
     """데이터베이스 테이블 생성"""
     try:
         Base.metadata.create_all(bind=engine)
-        auth_logger.info("데이터베이스 테이블 생성 완료")
+        auth_logger.info("Railway PostgreSQL 테이블 생성 완료")
     except Exception as e:
         auth_logger.error(f"테이블 생성 실패: {str(e)}")
         raise
@@ -115,8 +112,8 @@ def test_database_connection():
         with engine.connect() as conn:
             result = conn.execute(text("SELECT version()"))
             version = result.fetchone()[0]
-            auth_logger.info(f"데이터베이스 연결 테스트 성공: {version}")
+            auth_logger.info(f"Railway PostgreSQL 연결 테스트 성공: {version}")
             return True
     except Exception as e:
-        auth_logger.error(f"데이터베이스 연결 테스트 실패: {str(e)}")
+        auth_logger.error(f"Railway PostgreSQL 연결 테스트 실패: {str(e)}")
         return False
